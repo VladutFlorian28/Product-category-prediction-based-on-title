@@ -1,29 +1,49 @@
-import joblib
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.svm import LinearSVC
+import joblib
 
-# Load the saved model
-model = joblib.load("model/category_label_model.pkl")
+# 1. Load data
+df = pd.read_csv('data/products.csv')
 
-print("Model loaded successfully!")
-print("Type 'exit' at any point to stop.\n")
+# 2. Clean data
+df = df.dropna()
+df[' Category Label'] = df[' Category Label'].astype(str).str.lower().str.strip()
+df[' Category Label'] = df[' Category Label'].astype('category')
 
-while True:
-    title = input("Enter product title: ")
-    if title.lower() == "exit":
-        print("Exiting...")
-        break
+# 3. Drop columns not useful
+df = df.drop(columns=['product ID', 'Merchant ID', '_Product Code', ' Listing Date  '])
 
-    # Compute title length
-    title_length = len(title)
+# 4. Add additional numeric feature
+df['product_title_length'] = df['Product Title'].astype(str).str.len()
 
-    # Create a DataFrame from input
-    user_input = pd.DataFrame([{
-        "Product Title": title,
-        "product_title_length": title_length,
-        "Number_of_Views": 0,      
-        "Merchant Rating": 0        
-    }])
+# 5. Features (X) and label (y)
+X = df.drop(columns=[' Category Label'])
+y = df[' Category Label']
 
-    # Predict category
-    prediction = model.predict(user_input)[0]
-    print(f"Predicted category: {prediction}\n" + "-" * 40)
+# 6. Preprocessing (text + numeric)
+numeric_features = ["product_title_length", "Number_of_Views", "Merchant Rating"]
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("text", TfidfVectorizer(), "Product Title"),
+        ("num", MinMaxScaler(), numeric_features)
+    ]
+)
+
+# 7. Pipeline
+pipeline = Pipeline([
+    ("preprocessing", preprocessor),
+    ("classifier", LinearSVC(class_weight='balanced', max_iter=3000))
+])
+
+# 8. Train on 100% of the data
+pipeline.fit(X, y)
+print("✅ Modelul a fost antrenat cu succes pe 100% din date.")
+
+# Save the model to a file
+joblib.dump(pipeline, "model/category_label_model.pkl")
+
+print("Model trained and saved as 'model/category_label_model.pkl'")
